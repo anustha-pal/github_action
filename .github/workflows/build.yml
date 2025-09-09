@@ -42,31 +42,22 @@ jobs:
           name: build
           path: build
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          # Use the private key from GitHub secrets
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-          # Set default SSH port if not provided
-          SSH_PORT="${{ secrets.SSH_PORT }}"
-          if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
-
-          # Add server to known_hosts to avoid interactive prompt
-          ssh-keyscan -p $SSH_PORT -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy via rsync + atomic symlink
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          SSH_PORT="${{ secrets.SSH_PORT }}"
           if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
           RELEASE="release-$(date +%s)"
           echo "Deploying to ${DEPLOY_PATH}/releases/$RELEASE"
 
           # Sync build folder to server
-          rsync -e "ssh -p $SSH_PORT" -avz --delete build/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${DEPLOY_PATH}/releases/$RELEASE/
+          rsync -avz --delete -e "ssh -p $SSH_PORT" build/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${DEPLOY_PATH}/releases/$RELEASE/
 
           # Update 'current' symlink atomically
           ssh -p $SSH_PORT ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "set -e
