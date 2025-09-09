@@ -1,4 +1,4 @@
-name: CI/CD — Build & Deploy (zero-downtime)
+name: React CI/CD
 
 on:
   push:
@@ -8,27 +8,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      build_artifact: build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Use Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install dependencies
-        run: |
-          npm ci
-          # optional: fix vulnerabilities automatically (may upgrade breaking versions)
-          # npm audit fix --force
+        run: npm ci
 
       - name: Run tests (skip if none)
         run: npm test --if-present -- --passWithNoTests
 
-      - name: Build
+      - name: Build React app
         run: npm run build
 
       - name: Upload build artifact
@@ -40,12 +35,12 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: build
+          path: build
 
       - name: Setup SSH
         run: |
@@ -56,25 +51,24 @@ jobs:
           if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
           ssh-keyscan -p $SSH_PORT -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy build (rsync + atomic symlink)
+      - name: Deploy via rsync + atomic symlink
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           SSH_PORT="${{ secrets.SSH_PORT }}"
           if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
-
-          # unique release folder
           RELEASE="release-$(date +%s)"
+          
           echo "Deploying to ${DEPLOY_PATH}/releases/$RELEASE"
 
-          # copy build to server release dir
+          # Sync build to server release folder
           rsync -e "ssh -p $SSH_PORT" -avz --delete build/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${DEPLOY_PATH}/releases/$RELEASE/
 
-          # atomic symlink switch + cleanup (keep last 5 releases)
+          # Update 'current' symlink atomically
           ssh -p $SSH_PORT ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "set -e
             ln -sfn ${DEPLOY_PATH}/releases/$RELEASE ${DEPLOY_PATH}/current
-            # ensure nginx user can read (adjust as needed)
             sudo chown -R www-data:www-data ${DEPLOY_PATH}/current || true
+            # Keep last 5 releases, remove older
             cd ${DEPLOY_PATH}/releases
             ls -1tr | head -n -5 | xargs -r rm -rf || true
           "
