@@ -1,31 +1,33 @@
-name: React CI
+name: Build — test only
 
 on:
-  pull_request:
-    branches: [ main ]   
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18.20.8'
-          cache: 'npm'
+          node-version: '20'
 
-      - name: Install dependencies
+      - name: Install deps
         run: npm ci
-        
-      - name: Build React app
+
+      - name: Run tests
+        run: npm test --if-present
+
+      - name: Build
         run: npm run build
-        
-      - name: Upload production build
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: react-build
+          name: build
           path: build
