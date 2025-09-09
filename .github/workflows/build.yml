@@ -45,10 +45,15 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
+          # Use the private key from GitHub secrets
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          # Set default SSH port if not provided
           SSH_PORT="${{ secrets.SSH_PORT }}"
           if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
+
+          # Add server to known_hosts to avoid interactive prompt
           ssh-keyscan -p $SSH_PORT -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy via rsync + atomic symlink
@@ -58,17 +63,15 @@ jobs:
           SSH_PORT="${{ secrets.SSH_PORT }}"
           if [ -z "$SSH_PORT" ]; then SSH_PORT=22; fi
           RELEASE="release-$(date +%s)"
-          
           echo "Deploying to ${DEPLOY_PATH}/releases/$RELEASE"
 
-          # Sync build to server release folder
+          # Sync build folder to server
           rsync -e "ssh -p $SSH_PORT" -avz --delete build/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${DEPLOY_PATH}/releases/$RELEASE/
 
           # Update 'current' symlink atomically
           ssh -p $SSH_PORT ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "set -e
             ln -sfn ${DEPLOY_PATH}/releases/$RELEASE ${DEPLOY_PATH}/current
             sudo chown -R www-data:www-data ${DEPLOY_PATH}/current || true
-            # Keep last 5 releases, remove older
             cd ${DEPLOY_PATH}/releases
             ls -1tr | head -n -5 | xargs -r rm -rf || true
           "
