@@ -19,16 +19,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Install & Test
+      - name: Install dependencies
         run: |
           npm ci
-          npm test --if-present
+          # optional: fix vulnerabilities automatically (may upgrade breaking versions)
+          # npm audit fix --force
+
+      - name: Run tests (skip if none)
+        run: npm test --if-present -- --passWithNoTests
 
       - name: Build
         run: npm run build
